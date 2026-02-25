@@ -1,0 +1,446 @@
+\documentclass[12pt]{article}
+
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{array}
+\geometry{margin=1in}
+\usepackage{float}
+
+\title{Spacecraft ADCS Homework 1 Report\\
+NASA Starling Mission Analysis}
+\author{Aleksander Garbuz \\ Israel Garcia}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+% ==============================
+% Changelog
+% ==============================
+
+\section*{Changelog}
+
+\begin{center}
+\begin{tabular}{| m{3cm} | m{4cm} | m{6cm} |}
+\hline
+\textbf{Date} & \textbf{Section Modified} & \textbf{Description of Changes} \\
+\hline
+\the\year-\the\month-\the\day & Initial Draft & Selected Starling mission. Added mission overview, ADCS architecture, mass estimate, and initial inertia model. \\
+\hline
+ & & \\
+\hline
+\end{tabular}
+\end{center}
+
+\vspace{1cm}
+
+% ==============================
+% Repository
+% ==============================
+
+\section*{Project Repository}
+
+A GitHub repository has been created to store simulation code, numerical tools, and documentation for this project.
+
+\textbf{Repository Link:}
+
+\noindent
+\url{https://github.com/ATG218/spacecraft-adcs-course}
+
+All simulations are implemented in \textbf{Julia}, running in Jupyter notebooks (\texttt{.ipynb}).
+Orbital dynamics are numerically integrated using the \texttt{DifferentialEquations.jl} package.
+3D orbit animations are produced using \texttt{MeshCat.jl}.
+
+\vspace{1cm}
+
+% ==============================
+% Section 1
+% ==============================
+
+\section{Course Project Logistics}
+
+This homework begins the semester-long ADCS course project. 
+For this project, we selected NASA’s \textbf{Starling} mission as the spacecraft platform for analysis.
+
+The objectives of this project are to:
+
+\begin{itemize}
+    \item Model spacecraft rigid-body dynamics
+    \item Analyze principal axis stability
+    \item Characterize the attitude determination and control system
+    \item Design and simulate control laws in later assignments
+\end{itemize}
+
+Each homework assignment will expand this document and ultimately be compiled into a final report.
+
+% ==============================
+% Section 2
+% ==============================
+
+\section{Mission Description and ADCS Requirements}
+
+\subsection{Mission Overview}
+
+NASA’s \textbf{Starling} mission consists of four identical 6U CubeSats operating in low Earth orbit. 
+The mission demonstrates autonomous swarm technologies including:
+
+\begin{itemize}
+    \item Autonomous relative maneuver planning
+    \item Optical-based relative navigation
+    \item Inter-satellite networking
+    \item Distributed onboard autonomy
+\end{itemize}
+
+The spacecraft were launched on July 17, 2023 and operate in a Sun-synchronous orbit at approximately 480 km altitude.
+
+Although Starling is a multi-spacecraft mission, this project analyzes a single spacecraft as an isolated rigid body.
+
+\subsection{Spacecraft Bus}
+
+Each Starling spacecraft is built on a Blue Canyon Technologies (BCT) XB1 6U CubeSat bus. \cite{BCT_XB1}
+
+The standard 6U CubeSat dimensions are approximately:
+
+\[
+0.10 \text{ m} \times 0.20 \text{ m} \times 0.30 \text{ m}
+\]
+
+The bus integrates:
+
+\begin{itemize}
+    \item Onboard avionics and computing
+    \item Power generation and storage
+    \item GNSS receiver
+    \item Communications subsystem
+    \item Attitude Determination and Control System (ADCS)
+\end{itemize}
+
+\subsection{Attitude Determination and Control System}
+
+The Blue Canyon XB1 bus includes an integrated three-axis ADCS consistent with the Blue Canyon XACT family.
+
+The system includes:
+
+\begin{itemize}
+    \item Star trackers for fine attitude determination
+    \item Inertial measurement unit (gyroscopes)
+    \item Reaction wheels for three-axis control
+    \item Magnetorquers for momentum dumping
+\end{itemize}
+
+Blue Canyon 6U systems report pointing accuracy on the order of 0.002 degrees (1$\sigma$) for dual-star-tracker configurations.
+The XACT family is rated for a slew rate of $\geq 10\,^\circ$/s for a 4~kg, 3U CubeSat
+\cite{BCT_XACT}. Scaled to the Starling 6U bus mass of approximately 12~kg, the effective
+slew rate is estimated at $3$--$5\,^\circ$/s, consistent with the higher inertia of the
+larger spacecraft.
+
+\subsection{ADCS Requirements}
+
+Based on mission objectives and spacecraft architecture, the following capabilities are required \cite{SMAD}:
+
+\begin{itemize}
+    \item Three-axis stabilized control
+    \item Reaction wheel authority to counter environmental torques
+    \item Momentum dumping via magnetorquers
+    \item Controlled slewing between pointing targets
+\end{itemize}
+
+Further quantitative analysis will follow in subsequent sections.
+
+
+\section{Spacecraft Model}
+\subsection{Body Reference Frame Definition}
+
+A body-fixed reference frame $\mathcal{B} = \{\mathbf{b}_1, \mathbf{b}_2, \mathbf{b}_3\}$ 
+is defined and attached to the spacecraft.
+The origin of $\mathcal{B}$ is located at the spacecraft center of mass.
+
+The axes of $\mathcal{B}$ are aligned with the principal geometric dimensions of the 
+6U spacecraft bus:
+
+\[
+L_1 = 0.10 \text{ m}, \quad
+L_2 = 0.20 \text{ m}, \quad
+L_3 = 0.30 \text{ m}
+\]
+
+The body axes are defined as follows:
+
+\begin{itemize}
+    \item $\mathbf{b}_1$: aligned with the $Y$-direction, shortest dimension (0.10~m)
+    \item $\mathbf{b}_2$: aligned with the $X$-direction, intermediate dimension (0.20~m)
+    \item $\mathbf{b}_3$: aligned with the $Z$-direction, longest dimension (0.30~m)
+\end{itemize}
+
+The frame is defined to be right-handed such that
+\[
+\mathbf{b}_1 \times \mathbf{b}_2 = \mathbf{b}_3.
+\]
+
+The deployed solar panels are mounted on the $\pm \mathbf{b}_1$ faces of the spacecraft.
+The hinge runs along the $\mathbf{b}_2$ direction (20~cm), and when deployed the panels
+extend outward in the $\pm \mathbf{b}_1$ direction, lying approximately in the
+$\mathbf{b}_1$--$\mathbf{b}_3$ plane.
+
+This body-frame definition aligns the coordinate system with the dominant geometric
+features of the spacecraft and simplifies subsequent inertia and surface discretization
+calculations.
+
+\subsection{Modeling, Center of Mass, and COM Inertia}
+
+To gather the COM and Inertial Matrix for our chosen spacecraft, we first created a model in Fusion360
+
+
+\subsection{Mass and Inertia Properties}
+
+The exact mass of a Starling spacecraft is not publicly released. 
+Comparable NASA 6U CubeSat missions report launch masses near 12 kg. 
+We adopt 12 kg as a representative spacecraft mass.
+
+Assuming a uniform-density rectangular prism with dimensions:
+
+\[
+x = 0.10 \text{ m}, \quad
+y = 0.20 \text{ m}, \quad
+z = 0.30 \text{ m}
+\]
+
+the principal moments of inertia are:
+
+\[
+I_x = \frac{1}{12} m (y^2 + z^2)
+\]
+\[
+I_y = \frac{1}{12} m (x^2 + z^2)
+\]
+\[
+I_z = \frac{1}{12} m (x^2 + y^2)
+\]
+
+Substituting \( m = 12 \) kg gives:
+
+\[
+I_x \approx 0.13 \text{ kg m}^2
+\]
+\[
+I_y \approx 0.10 \text{ kg m}^2
+\]
+\[
+I_z \approx 0.05 \text{ kg m}^2
+\]
+
+These values provide a first-order rigid-body inertia model.
+
+% ==============================
+% Section 4
+% ==============================
+
+\section{Dynamics}
+
+\subsection{State Vector and Reference Frame}
+
+The spacecraft position and velocity are expressed in an Earth-Centered Inertial (ECI) frame,
+with units of kilometers and seconds throughout.
+The 6-element state vector is
+\[
+\mathbf{x} = \begin{bmatrix} \mathbf{r} \\ \mathbf{v} \end{bmatrix} \in \mathbb{R}^6,
+\]
+where $\mathbf{r} = [x,\, y,\, z]^\top$~(km) is the ECI position and
+$\mathbf{v} = [\dot{x},\, \dot{y},\, \dot{z}]^\top$~(km/s) is the ECI velocity.
+
+\subsection{Equations of Motion}
+
+The orbital ODE is
+\[
+\dot{\mathbf{r}} = \mathbf{v}, \qquad
+\dot{\mathbf{v}} = \mathbf{a}_{2B} + \mathbf{a}_{J_2} + \mathbf{a}_{D}.
+\]
+
+\subsubsection*{Two-Body Gravity}
+
+\[
+\mathbf{a}_{2B} = -\frac{\mu}{r^3}\,\mathbf{r}, \qquad r = \|\mathbf{r}\|,
+\]
+with $\mu = 398600.4418$~km$^3$/s$^2$.
+
+\subsubsection*{$J_2$ Oblateness Perturbation}
+
+The first zonal harmonic of Earth's gravitational potential produces a secular drift in the
+right ascension of the ascending node (RAAN).
+In ECI coordinates the perturbation acceleration is \cite{Vallado2013}
+\[
+\mathbf{a}_{J_2} = \frac{3\,J_2\,\mu\,R_E^2}{2\,r^5}
+\begin{bmatrix}
+x \!\left(\dfrac{5z^2}{r^2} - 1\right) \\[8pt]
+y \!\left(\dfrac{5z^2}{r^2} - 1\right) \\[8pt]
+z \!\left(\dfrac{5z^2}{r^2} - 3\right)
+\end{bmatrix},
+\]
+with $J_2 = 1.08262668 \times 10^{-3}$ and $R_E = 6378.1363$~km,
+both consistent with the EGM96 gravity model \cite{EGM96}.
+
+\subsubsection*{Atmospheric Drag}
+
+An exponential atmosphere model is used with reference density
+$\rho_0 = 3.614 \times 10^{-13}$~kg/m$^3$ at reference altitude $h_0 = 700$~km
+and scale height $H = 88.667$~km \cite{Curtis2014}:
+\[
+\rho(h) = \rho_0 \exp\!\left(-\frac{h - h_0}{H}\right), \qquad h = \|\mathbf{r}\| - R_E.
+\]
+The drag acceleration is
+\[
+\mathbf{a}_D = -\frac{1}{2}\,\rho\,B_c\,|\mathbf{v}_{\mathrm{rel}}|\,\mathbf{v}_{\mathrm{rel}},
+\]
+where $\mathbf{v}_{\mathrm{rel}} = \mathbf{v} - \boldsymbol{\omega}_E \times \mathbf{r}$
+accounts for Earth's rotation ($\omega_E = 7.2921159 \times 10^{-5}$~rad/s), and
+$B_c = C_d A / m$ is the ballistic coefficient.
+Representative values $C_d = 2.2$, $A = 0.03$~m$^2$, and $m = 12$~kg give
+$B_c = 5.50 \times 10^{-3}$~m$^2$/kg.
+These are approximate values; the cross-sectional area presented to the flow varies with
+spacecraft attitude, which is not modeled in the current simulation.
+
+\subsection{Sun-Synchronous Orbit Design}
+
+A sun-synchronous orbit (SSO) requires the orbital plane to precess at Earth's mean
+heliocentric rate of $\dot\Omega = +0.985647\,^\circ$/day.
+The secular RAAN drift due to $J_2$ for a near-circular orbit is \cite{Vallado2013}
+\[
+\dot\Omega = -\frac{3}{2}\,J_2\,n\left(\frac{R_E}{p}\right)^2\!\cos i,
+\qquad n = \sqrt{\frac{\mu}{a^3}},\quad p = a(1-e^2).
+\]
+Setting $\dot\Omega = +0.985647\,^\circ$/day and $e \approx 0$, the required inclination satisfies
+\[
+\cos i = \frac{\dot\Omega}{-\tfrac{3}{2}\,J_2\,n\,(R_E/a)^2}.
+\]
+For the Starling altitude of 480~km, $a = 6858.136$~km, and solving gives
+$i = 97.326^\circ$, a retrograde inclination as expected for SSO.
+
+\subsection{Initial Conditions}
+
+Initial conditions are specified via classical orbital elements (COEs) and converted to ECI
+coordinates using the standard perifocal-to-ECI direction cosine matrix
+$Q = R_3(\Omega)\,R_1(i)\,R_3(\omega)$ \cite{Vallado2013}.
+The epoch state is:
+
+\begin{center}
+\begin{tabular}{ll}
+Semi-major axis   & $a = 6858.136$~km \\
+Eccentricity      & $e = 0$ \\
+Inclination       & $i = 97.326^\circ$ \\
+RAAN              & $\Omega = 0^\circ$ \\
+Arg.\ of perigee  & $\omega = 0^\circ$ \\
+True anomaly      & $\nu = 0^\circ$ \\
+\end{tabular}
+\end{center}
+
+This yields the initial ECI state
+$\mathbf{r}_0 = [6858.136,\ 0,\ 0]^\top$~km and
+$\mathbf{v}_0 = [0,\ {-0.9722},\ 7.5615]^\top$~km/s,
+with orbital speed $|\mathbf{v}_0| = 7.6237$~km/s and
+orbital period $T = 5652$~s (94.2~min).
+
+\subsection{Numerical Simulation and Results}
+
+The ODE is integrated using the Vern9 (9th-order Runge--Kutta) solver from the
+Julia \texttt{DifferentialEquations.jl} package, with relative tolerance $10^{-10}$
+and absolute tolerance $10^{-12}$.
+The simulation spans 10 orbital periods ($\approx 15.7$~hours), with output saved every 30~s.
+Two cases are run:
+
+\begin{enumerate}
+    \item \textbf{J2-only (no drag).}
+    The RAAN precession rate extracted by a least-squares linear fit over 10 orbits is
+    $\dot\Omega = 0.991\,^\circ$/day, compared to the target $0.985647\,^\circ$/day
+    (error of $0.54\%$).
+    The small discrepancy arises because the secular formula is a first-order orbital average,
+    while the simulation propagates osculating elements that include short-period
+    $J_2$ oscillations.
+    The semi-major axis is conserved to within 43~m over 15.7~hours, confirming that
+    $J_2$ produces no secular energy change for a circular orbit.
+
+    \item \textbf{J2 + drag.}
+    Over 15.7~hours, atmospheric drag reduces the semi-major axis by
+    $\Delta a = -0.119$~km.
+    In practice, Starling uses periodic maneuvers to maintain altitude; these are not
+    modeled in the current simulation.
+\end{enumerate}
+
+Perturbations not included in the current model are solar radiation pressure, third-body
+gravity, and spacecraft maneuvers; these are planned for future simulation work.
+Figures~\ref{fig:orbit} and~\ref{fig:raan} show the simulated ECI trajectory
+and RAAN evolution respectively.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\textwidth]{figs/orbit_trajectory.png}
+    \caption{Simulated ECI trajectory over 10 orbits (J2 + drag).
+             Earth wireframe shown for scale.  Altitude 480~km, $i = 97.326^\circ$.}
+    \label{fig:orbit}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\textwidth]{figs/raan_precession.png}
+    \caption{RAAN evolution over 10 orbits (J2-only case).
+             Simulated precession rate $0.991\,^\circ$/day versus SSO target $0.985647\,^\circ$/day.}
+    \label{fig:raan}
+\end{figure}
+
+% ==============================
+% References
+% ==============================
+
+\newpage
+
+\begin{thebibliography}{9}
+
+\bibitem{SMAD}
+Wertz, J. R., and Larson, W. J.,
+\textit{Space Mission Analysis and Design (SMAD)},
+Microcosm Press.
+
+\bibitem{STARLING_OVERVIEW}
+NASA,
+``Starling Mission Overview,''
+NASA Mission Page,
+\url{https://www.nasa.gov/mission/starling/}
+
+\bibitem{STARLING_FLIGHT}
+Miller, S. et al.,
+``Starling CubeSat Swarm Technology Demonstration Flight Results,''
+NASA Technical Reports Server (NTRS), 2024,
+\url{https://ntrs.nasa.gov/}
+
+\bibitem{BCT_XB1}
+Blue Canyon Technologies,
+``XB1 6U CubeSat Bus Overview,''
+Product Documentation,
+\url{https://www.bluecanyontech.com/spacecraft/6u-cubesat/}
+
+\bibitem{BCT_XACT}
+Blue Canyon Technologies,
+``XACT Attitude Determination and Control System,''
+Product Documentation,
+\url{https://www.bluecanyontech.com/spacecraft-subsystems/xact/}
+
+\bibitem{Vallado2013}
+D.~A. Vallado,
+\textit{Fundamentals of Astrodynamics and Applications}, 4th~ed.,
+Microcosm Press / Springer, 2013.
+
+\bibitem{Curtis2014}
+H.~D. Curtis,
+\textit{Orbital Mechanics for Engineering Students}, 3rd~ed.,
+Butterworth-Heinemann / Elsevier, 2014.
+
+\bibitem{EGM96}
+F.~G. Lemoine et al.,
+``Development of the Joint NASA GSFC and NIMA Geopotential Model EGM96,''
+NASA/TP-1998-206861, NASA Goddard Space Flight Center, 1998.
+
+\end{thebibliography}
+
+\end{document}

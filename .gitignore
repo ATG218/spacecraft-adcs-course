@@ -1,0 +1,24 @@
+# macOS
+.DS_Store
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Julia
+__pycache__/
+*.jl.cov
+*.jl.mem
+*.jl.*.cov
+Manifest.toml
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.synctex.gz
+*.toc
+*.fls
+*.fdb_latexmk
+
+# Course lecture notes
+Lectures/

@@ -1,0 +1,45 @@
+\documentclass[11pt,letterpaper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+\title{Spacecraft ADCS Homework 1}
+\author{Due Thursday, February 26, 2026}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\section{Course Project Logistics}
+
+This homework is the beginning of your course project. You are encouraged to find a partner for your project to work with throughout the semester. You should turn each assignment as a written report with a title page, a changelog, and a list of references. The changelog should be a simple table to keep track of major document revisions (e.g. what you did for each homework assignment) and corresponding dates. Please also start a GitHub repository to keep track of your code and include links to the code in your report.
+
+\section{Mission Description and Requirements}
+
+As a short introduction to your report, describe the spacecraft mission you are analyzing. This should include the high-level mission objectives, the spacecraft orbit, the sensors and actuators present on the spacecraft, and the requirements for the ADCS system (e.g. pointing accuracy and slew rate). This information should be gathered from references. Start by reading the ADCS chapter from SMAD posted on Canvas. If you cannot find all of the information for your chosen spacecraft, make some reasonable assumptions based on similar missions that you can find in the literature.
+
+\section{Spacecraft Model}
+
+Build a simplified geometric model of your spacecraft and calculate its mass properties. This section should include the following:
+\begin{enumerate}
+	\item Define a set of body axes based on the vehicle shape and payload pointing requirements (this is arbitrary).
+	\item Break the vehicle down into simple shapes like boxes, cylinders, and cones, and assume each piece has a uniform density. Use this to calculate the vehicle's center of mass and body-frame inertia matrix.
+	\item Calculate the principle axes and the rotation between the body and principle frames.
+	\item Discretize the outer surfaces of your spacecraft into a reasonable number of planar pieces and specify the centroid (geometric center), normal vector, and area of each piece. This will eventually be used to calculate environmental torques due to e.g. drag.
+\end{enumerate}
+
+\section{Dynamics}
+
+We will gradually build up a full model of the spacecraft's attitude dynamics. To get started, write down an ODE for your spacecraft's orbital dynamics and simulate it for several orbits with either your own RK4 implementation or an ODE toolbox in MATLAB, Python, or Julia. I recommend using Earth-centered Inertial coordinates and units of kilometers and seconds for this.
+
+\section{Euler's Equation}
+
+\begin{enumerate}
+	\item Implement Euler's equation using the inertia matrix for your spacecraft.
+	\item Verify our stability analysis from class by simulating your spacecraft's motion about each principle axis. Start with an initial condition of $\| \omega \| = 10$ RPM about the major axis and then use the same angular momentum about each of the other axes. Add perturbations to the initial conditions to test the stability of each axis and to simulate nutation.
+	\item Produce a plot of the momentum sphere showing each equilibrium point and several example trajectories.
+	\end{enumerate}
+
+\end{document}
