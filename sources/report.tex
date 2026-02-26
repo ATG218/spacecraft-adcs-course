@@ -4,6 +4,7 @@
 \usepackage{graphicx}
 \usepackage{hyperref}
 \usepackage{geometry}
+\usepackage{tabularx}
 \usepackage{array}
 \geometry{margin=1in}
 \usepackage{float}
@@ -28,9 +29,7 @@ NASA Starling Mission Analysis}
 \hline
 \textbf{Date} & \textbf{Section Modified} & \textbf{Description of Changes} \\
 \hline
-\the\year-\the\month-\the\day & Initial Draft & Selected Starling mission. Added mission overview, ADCS architecture, mass estimate, and initial inertia model. \\
-\hline
- & & \\
+2026-02-25 & HW1 & Initial report completed. \\
 \hline
 \end{tabular}
 \end{center}
@@ -62,19 +61,7 @@ Orbital dynamics are numerically integrated using the \texttt{DifferentialEquati
 
 \section{Course Project Logistics}
 
-This homework begins the semester-long ADCS course project. 
-For this project, we selected NASA’s \textbf{Starling} mission as the spacecraft platform for analysis.
-
-The objectives of this project are to:
-
-\begin{itemize}
-    \item Model spacecraft rigid-body dynamics
-    \item Analyze principal axis stability
-    \item Characterize the attitude determination and control system
-    \item Design and simulate control laws in later assignments
-\end{itemize}
-
-Each homework assignment will expand this document and ultimately be compiled into a final report.
+For this project, we selected NASA's \textbf{Starling} mission as the spacecraft platform for analysis. Each homework assignment will expand this document and ultimately be compiled into a final report.
 
 % ==============================
 % Section 2
@@ -84,7 +71,7 @@ Each homework assignment will expand this document and ultimately be compiled in
 
 \subsection{Mission Overview}
 
-NASA’s \textbf{Starling} mission consists of four identical 6U CubeSats operating in low Earth orbit. 
+ NASA’s \textbf{Starling} mission consists of four identical 6U CubeSats operating in low Earth orbit. 
 The mission demonstrates autonomous swarm technologies including:
 
 \begin{itemize}
@@ -152,6 +139,7 @@ Further quantitative analysis will follow in subsequent sections.
 
 
 \section{Spacecraft Model}
+\label{sec:model}
 \subsection{Body Reference Frame Definition}
 
 A body-fixed reference frame $\mathcal{B} = \{\mathbf{b}_1, \mathbf{b}_2, \mathbf{b}_3\}$ 
@@ -191,52 +179,149 @@ calculations.
 
 \subsection{Modeling, Center of Mass, and COM Inertia}
 
-To gather the COM and Inertial Matrix for our chosen spacecraft, we first created a model in Fusion360
+\par
+To gather the COM and Inertial Matrix for our chosen spacecraft, we first created a model in Fusion360 (Figure~\ref{fig:starling_model}). This model was a reduced, superficial version of the real Starling spacecraft. We broke the vehicle down into the main body frame (a solid rectangle of uniform density) and the main deployable solar arrays (solid thin rectangles).
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.6\linewidth]{figs/StartingModel.png}
+    \caption{Basic Fusion 360 CAD model of the Starling satellite}
+    \label{fig:starling_model}
+\end{figure}
 
 
-\subsection{Mass and Inertia Properties}
 
-The exact mass of a Starling spacecraft is not publicly released. 
-Comparable NASA 6U CubeSat missions report launch masses near 12 kg. 
-We adopt 12 kg as a representative spacecraft mass.
+\par
+Using our previously established density for the main body, and an estimate of the density of the solar arrays based on standard CubeSat dimensions (1.5 mm thickness and areal density of about 5 kg/m$^2$).
 
-Assuming a uniform-density rectangular prism with dimensions:
-
+\par
+With this we were able to obtain the Center of Mass:
 \[
-x = 0.10 \text{ m}, \quad
-y = 0.20 \text{ m}, \quad
-z = 0.30 \text{ m}
+x_{COM} = 0.0 \text{ m}, \quad
+y_{COM} = 0.002 \text{ m}, \quad
+z_{COM} = 0.167 \text{ m}
 \]
 
-the principal moments of inertia are:
+\par
+And the Inertial Matrix:
 
 \[
-I_x = \frac{1}{12} m (y^2 + z^2)
-\]
-\[
-I_y = \frac{1}{12} m (x^2 + z^2)
-\]
-\[
-I_z = \frac{1}{12} m (x^2 + y^2)
-\]
-
-Substituting \( m = 12 \) kg gives:
-
-\[
-I_x \approx 0.13 \text{ kg m}^2
-\]
-\[
-I_y \approx 0.10 \text{ kg m}^2
-\]
-\[
-I_z \approx 0.05 \text{ kg m}^2
+\mathbf{I} = 
+\begin{bmatrix}
+    0.249 & 0.00 & 0.00 \\
+    0.00 &
+    0.187 &
+    0.02 \\
+    0.00 &
+    0.02 &
+    0.148 \\
+\end{bmatrix}
 \]
 
-These values provide a first-order rigid-body inertia model.
+\subsection{Principal Axis and Rotation of Body}
 
-% ==============================
-% Section 4
-% ==============================
+The principal moments of inertia and the rotation matrix from the body frame to the
+principal frame were computed numerically using Julia's built-in \texttt{eigen()} function
+applied to the inertia matrix from Section~\ref{sec:model}.2, giving:
+\[
+I_1 = 0.13957\ \text{kg\,m}^2 \quad\text{(minor)},\quad
+I_2 = 0.19543\ \text{kg\,m}^2 \quad\text{(intermediate)},\quad
+I_3 = 0.249\ \text{kg\,m}^2 \quad\text{(major)}.
+\]
+These principal moments are used directly in the Euler's equation simulation
+(Section~\ref{sec:euler}).
+
+\subsection{Surface Discretization}
+
+With our simple model, we are able to discretize the outer surfaces of the satellite into 10 distinct surfaces, 6 from the body itself, and 4 from the solar arrays. For now, we will solely consider the deployed state of the solar panels, in which case they can be discretized simply.
+
+\begin{table}[H]
+\centering
+\caption{Surface Discretization of Satellite Exterior}
+\vspace{6 pt}
+\label{tab:surface_discretization}
+\begin{tabularx}{\linewidth}{|l|X|X|c|X|}
+\hline
+\textbf{Surface} &
+\textbf{Centroid $(x,y,z)$ [m]} &
+\textbf{Normal Vector $\hat{n}$} &
+\textbf{Area [m$^2$]} &
+\textbf{Description} \\
+\hline
+
+Bus +X &
+$(0.1,\ 0,\ 0.15)$ &
+$(+1,\ 0,\ 0)$ &
+0.03 m$^2$ &
+Parallel to b2  \\
+\hline
+
+Bus -X &
+$(-0.1,\ 0,\ 0.15)$ &
+$(-1,\ 0,\ 0)$ &
+0.03 m$^2$ &
+Parallel to b2 \\
+\hline
+
+Bus +Y &
+$(0,\ 0.05,\ 0.15)$ &
+$(0,\ +1,\ 0)$ &
+0.06 m$^2$ &
+Parallel to b1 \\
+\hline
+
+Bus -Y &
+$(0,\ -0.05,\ 0.15)$ &
+$(0,\ -1,\ 0)$ &
+0.06 m$^2$ &
+Parallel to b1 \\
+\hline
+
+Bus +Z &
+$(0,\ 0,\ 0.3)$ &
+$(0,\ 0,\ +1)$ &
+0.02 m$^2$ &
+Parallel to b3 \\
+\hline
+
+Bus -Z &
+$(0,\ 0,\ 0)$ &
+$(0,\ 0,\ -1)$ &
+0.02 m$^2$ &
+Parallel to b3 \\
+\hline
+
+Panel Right (Outer) &
+$(0,\ 0.3,\ 0.3015)$ &
+$(0,\ \tfrac{1}{\sqrt{2}},\ \tfrac{1}{\sqrt{2}})$ &
+0.10 m$^2$ &
+Perpendicular to b1 \\
+\hline
+
+Panel Right (Inner) &
+$(0,\ 0.3,\ 0.30)$ &
+$(0,\ -\tfrac{1}{\sqrt{2}},\ -\tfrac{1}{\sqrt{2}})$ &
+0.10 m$^2$ &
+... \\
+\hline
+
+Panel Left (Outer) &
+$(0,\ 0.254,\ 0.4445)$ &
+$(0,\ 0,\ +1)$ &
+0.10 m$^2$ &
+35.3 to b1 \\
+\hline
+
+Panel Left (Inner) &
+$(0,\ 0.255,\ 0.443)$ &
+$(0,\ 0,\ -1)$ &
+0.10 m$^2$ &
+... \\
+\hline
+
+\end{tabularx}
+\end{table}
+
 
 \section{Dynamics}
 
@@ -370,8 +455,8 @@ Two cases are run:
 
 Perturbations not included in the current model are solar radiation pressure, third-body
 gravity, and spacecraft maneuvers; these are planned for future simulation work.
-Figures~\ref{fig:orbit} and~\ref{fig:raan} show the simulated ECI trajectory
-and RAAN evolution respectively.
+Figures~\ref{fig:orbit}, \ref{fig:raan}, and~\ref{fig:orbit_2d} show the simulated
+ECI trajectory, RAAN evolution, and ground track with altitude decay respectively.
 
 \begin{figure}[H]
     \centering
@@ -389,9 +474,152 @@ and RAAN evolution respectively.
     \label{fig:raan}
 \end{figure}
 
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.90\textwidth]{figs/orbit_2d.png}
+    \caption{Top: ground track over 10 orbits (J2+drag), colored by elapsed time.
+             The retrograde inclination ($97.326^\circ$) limits ground coverage to
+             $\pm 82.7^\circ$ latitude; each successive pass shifts $\approx 25^\circ$
+             westward as Earth rotates beneath the satellite.
+             Bottom: altitude vs.\ time showing drag-induced decay; the J2-only
+             reference (dashed) isolates the 0.119~km SMA reduction due to drag alone.}
+    \label{fig:orbit_2d}
+\end{figure}
+
 % ==============================
-% References
+% Section 5
 % ==============================
+
+\section{Euler's Equation}
+\label{sec:euler}
+
+\subsection{Torque-Free Dynamics}
+
+In the principal frame, Euler's torque-free equations are
+\[
+I_1\dot\omega_1 = (I_2 - I_3)\,\omega_2\,\omega_3,\quad
+I_2\dot\omega_2 = (I_3 - I_1)\,\omega_3\,\omega_1,\quad
+I_3\dot\omega_3 = (I_1 - I_2)\,\omega_1\,\omega_2.
+\]
+These conserve two integrals of motion: the kinetic energy
+$T = \tfrac{1}{2}\boldsymbol\omega^\top\mathbf{I}\boldsymbol\omega$
+and the inertial angular momentum magnitude $\|\mathbf{H}\|$.
+A 7-state ODE couples Euler's equations with quaternion kinematics
+$\dot{\mathbf{q}} = \tfrac{1}{2}\,G(\mathbf{q})\,\boldsymbol\omega$,
+integrated from $\mathbf{q}_0 = [1,0,0,0]^\top$ using the Vern9 solver
+($\text{reltol}=10^{-10}$, $\text{abstol}=10^{-12}$) over 600~s.
+The principal moments from Section~\ref{sec:model}.3 are used throughout.
+
+\subsection{Stability Analysis}
+
+Linearizing about a pure spin $\omega_k = \Omega$ on principal axis $k$,
+the off-axis perturbations oscillate at
+\[
+\omega_n = |\Omega|\sqrt{\frac{(I_k - I_i)(I_k - I_j)}{I_i\,I_j}}.
+\]
+This frequency is real---and the axis is \emph{stable}---only when $I_k$
+is the largest or smallest principal moment.
+Intermediate-axis spin yields an imaginary $\omega_n$: this is the
+\emph{tennis-racket theorem}, which predicts that any perturbation,
+however small, leads to unbounded tumbling.
+
+Three simulations are run with $\|\boldsymbol\omega_0\| = 10$~RPM
+using the same angular momentum magnitude $H_0 = I_3\,\omega_\mathrm{mag}$:
+
+\begin{itemize}
+    \item \textbf{Major axis} ($I_3 = 0.249$~kg\,m$^2$, $\omega_3 = 1.047$~rad/s):
+          2~RPM off-axis perturbation — stable.
+    \item \textbf{Intermediate axis} ($I_2 = 0.195$~kg\,m$^2$, $\omega_2 = 1.342$~rad/s):
+          0.05~RPM perturbation — unstable (separatrix).
+    \item \textbf{Minor axis} ($I_1 = 0.140$~kg\,m$^2$, $\omega_1 = 1.868$~rad/s):
+          2~RPM off-axis perturbation — stable.
+\end{itemize}
+
+\subsection{Nutation Period Validation}
+
+For the two stable axes the analytical nutation period is compared against the
+period extracted from zero-crossings of the simulated perturbed component:
+
+\begin{center}
+\begin{tabular}{lcccc}
+\hline
+\textbf{Axis} & \textbf{Spin (rad/s)} & \textbf{Theory $T_n$ (s)} & \textbf{Simulated $T_n$ (s)} & \textbf{Error} \\
+\hline
+Major ($I_3$) & 1.047 & 12.942 & 13.019 & 0.59\% \\
+Minor ($I_1$) & 1.868 & \phantom{0}9.489 & \phantom{0}9.469 & 0.21\% \\
+\hline
+\end{tabular}
+\end{center}
+
+The sub-1\% errors are consistent with expected nonlinear corrections at
+the 20\% perturbation amplitude used; the linearized formula is exact only for
+infinitesimal perturbations.
+Kinetic energy and inertial angular momentum are conserved to
+$|\Delta T/T_0| < 6\times10^{-12}\%$ and $|\Delta H/H_0| < 5\times10^{-9}\%$
+respectively, confirming numerical accuracy.
+Figure~\ref{fig:euler_conservation} shows these quantities vs.\ time for the
+intermediate-axis simulation.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{figs/euler_conservation.png}
+    \caption{Conservation verification for intermediate-axis spin (torque-free, Vern9,
+             $\text{reltol}=10^{-10}$).
+             Top: kinetic energy $T(t)$ — constant to $<6\times10^{-12}\%$.
+             Bottom: inertial angular momentum components $H_x, H_y, H_z$ — each
+             constant to $<5\times10^{-9}\%$, confirming no spurious numerical torque.}
+    \label{fig:euler_conservation}
+\end{figure}
+
+\subsection{Results}
+
+Figure~\ref{fig:momentum_sphere} shows the angular momentum sphere in the body
+principal frame.
+Major- and minor-axis trajectories form small closed elliptic loops around the
+stable equilibria ($\pm\hat{e}_3$ and $\pm\hat{e}_1$), while the
+intermediate-axis trajectory traces the separatrix connecting the unstable
+equilibria ($\pm\hat{e}_2$).
+
+Figure~\ref{fig:euler_omega} shows the angular velocity time histories.
+For stable axes the off-axis components oscillate with bounded amplitude,
+confirming stable nutation; the intermediate axis shows large excursions in
+all three components, characteristic of separatrix behavior.
+
+Figure~\ref{fig:euler_perturbations} demonstrates that intermediate-axis
+instability is independent of perturbation magnitude: perturbations of
+1\%, 5\%, and 20\% all produce the same qualitative divergence.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.72\textwidth]{figs/momentum_sphere.png}
+    \caption{Angular momentum sphere for Starling 6U in the principal body frame
+             (torque-free, 10~RPM).
+             Blue: major-axis spin (stable, small closed loop near $+\hat{e}_3$).
+             Green: minor-axis spin (stable, small closed loop near $+\hat{e}_1$).
+             Red: intermediate-axis spin (unstable, separatrix).
+             Gold dots: the six equilibrium points $\pm H_0\,\hat{e}_k$.}
+    \label{fig:momentum_sphere}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.90\textwidth]{figs/euler_omega.png}
+    \caption{Angular velocity components $\omega_1,\omega_2,\omega_3$ vs.\ time.
+             Top: major-axis spin — $\omega_1,\omega_2$ exhibit bounded nutation oscillations.
+             Middle: intermediate-axis spin — all components undergo large separatrix excursions.
+             Bottom: minor-axis spin — $\omega_2,\omega_3$ exhibit bounded nutation oscillations.}
+    \label{fig:euler_omega}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{figs/euler_perturbations.png}
+    \caption{Intermediate-axis spin component $\omega_2(t)$ for perturbation sizes of
+             1\%, 5\%, and 20\% of the spin rate.
+             All three diverge in the same qualitative manner regardless of initial
+             perturbation magnitude, demonstrating global instability of the intermediate axis.}
+    \label{fig:euler_perturbations}
+\end{figure}
 
 \newpage
 
