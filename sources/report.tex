@@ -8,6 +8,8 @@
 \usepackage{array}
 \geometry{margin=1in}
 \usepackage{float}
+\usepackage{amssymb}
+\usepackage{todonotes}
 
 \title{Spacecraft ADCS Homework 1 Report\\
 NASA Starling Mission Analysis}
@@ -61,7 +63,7 @@ Orbital dynamics are numerically integrated using the \texttt{DifferentialEquati
 
 \section{Course Project Logistics}
 
-For this project, we selected NASA's \textbf{Starling} mission as the spacecraft platform for analysis. Each homework assignment will expand this document and ultimately be compiled into a final report.
+For this project, we selected NASA's \textbf{Starling} mission as the spacecraft platform for analysis. Each homework assignment will expand upon this document and ultimately be compiled into a final report on our work.
 
 % ==============================
 % Section 2
@@ -83,7 +85,7 @@ The mission demonstrates autonomous swarm technologies including:
 
 The spacecraft were launched on July 17, 2023 and operate in a Sun-synchronous orbit at approximately 480 km altitude.
 
-Although Starling is a multi-spacecraft mission, this project analyzes a single spacecraft as an isolated rigid body.
+Although Starling is a multi-spacecraft mission, this will project analyze a single spacecraft as an isolated rigid body.
 
 \subsection{Spacecraft Bus}
 
@@ -107,9 +109,9 @@ The bus integrates:
 
 \subsection{Attitude Determination and Control System}
 
-The Blue Canyon XB1 bus includes an integrated three-axis ADCS consistent with the Blue Canyon XACT family.
+The Blue Canyon XB1 bus includes an integrated three-axis ADCS.
 
-The system includes:
+The ADCS system includes:
 
 \begin{itemize}
     \item Star trackers for fine attitude determination
@@ -121,7 +123,7 @@ The system includes:
 Blue Canyon 6U systems report pointing accuracy on the order of 0.002 degrees (1$\sigma$) for dual-star-tracker configurations.
 The XACT family is rated for a slew rate of $\geq 10\,^\circ$/s for a 4~kg, 3U CubeSat
 \cite{BCT_XACT}. Scaled to the Starling 6U bus mass of approximately 12~kg, the effective
-slew rate is estimated at $3$--$5\,^\circ$/s, consistent with the higher inertia of the
+slew rate is estimated at $3$-\-$5\,^\circ$/s, consistent with the higher inertia of the
 larger spacecraft.
 
 \subsection{ADCS Requirements}
@@ -170,8 +172,8 @@ The frame is defined to be right-handed such that
 
 The deployed solar panels are mounted on the $\pm \mathbf{b}_1$ faces of the spacecraft.
 The hinge runs along the $\mathbf{b}_2$ direction (20~cm), and when deployed the panels
-extend outward in the $\pm \mathbf{b}_1$ direction, lying approximately in the
-$\mathbf{b}_1$--$\mathbf{b}_3$ plane.
+extend outward in the $\pm \mathbf{b}_1$ direction, with one lying approximately in the
+$\mathbf{b}_1$--$\mathbf{b}_2$ plane, and one tilted from that plane by 45$\,^\circ$ with the $-\mathbf{b}_1$ axis.
 
 This body-frame definition aligns the coordinate system with the dominant geometric
 features of the spacecraft and simplifies subsequent inertia and surface discretization
@@ -180,7 +182,7 @@ calculations.
 \subsection{Modeling, Center of Mass, and COM Inertia}
 
 \par
-To gather the COM and Inertial Matrix for our chosen spacecraft, we first created a model in Fusion360 (Figure~\ref{fig:starling_model}). This model was a reduced, superficial version of the real Starling spacecraft. We broke the vehicle down into the main body frame (a solid rectangle of uniform density) and the main deployable solar arrays (solid thin rectangles).
+To gather the COM and the Inertial Matrix for our chosen spacecraft, we first created a model in Fusion360 (Figure~\ref{fig:starling_model}). This model was a reduced, superficial version of the real Starling spacecraft. We broke the vehicle down into the main body frame (a solid rectangle of uniform density) and the main deployable solar arrays (solid thin rectangles, also of uniform density).
 
 \begin{figure}[H]
     \centering
@@ -192,10 +194,8 @@ To gather the COM and Inertial Matrix for our chosen spacecraft, we first create
 
 
 \par
-Using our previously established density for the main body, and an estimate of the density of the solar arrays based on standard CubeSat dimensions (1.5 mm thickness and areal density of about 5 kg/m$^2$).
+Using our previously established density for the main body and an estimate of the density of the solar arrays gathered from standard CubeSat dimensions (1.5 mm thickness and areal density of about 5 kg/m$^2$) we were able to obtain the Center of Mass:
 
-\par
-With this we were able to obtain the Center of Mass:
 \[
 x_{COM} = 0.0 \text{ m}, \quad
 y_{COM} = 0.002 \text{ m}, \quad
@@ -224,8 +224,12 @@ The principal moments of inertia and the rotation matrix from the body frame to 
 principal frame were computed numerically using Julia's built-in \texttt{eigen()} function
 applied to the inertia matrix from Section~\ref{sec:model}.2, giving:
 \[
-I_1 = 0.13957\ \text{kg\,m}^2 \quad\text{(minor)},\quad
-I_2 = 0.19543\ \text{kg\,m}^2 \quad\text{(intermediate)},\quad
+I_1 = 0.13957\ \text{kg\,m}^2 \quad\text{(minor)},\quad 
+\]
+\[ 
+I_2 = 0.19543\ \text{kg\,m}^2 \quad\text{(intermediate)},\quad 
+\]
+\[
 I_3 = 0.249\ \text{kg\,m}^2 \quad\text{(major)}.
 \]
 These principal moments are used directly in the Euler's equation simulation
@@ -327,9 +331,10 @@ $(0,\ 0,\ -1)$ &
 
 \subsection{State Vector and Reference Frame}
 
-The spacecraft position and velocity are expressed in an Earth-Centered Inertial (ECI) frame,
-with units of kilometers and seconds throughout.
-The 6-element state vector is
+The spacecraft position and velocity are expressed in an Earth-Centered Inertial (ECI) frame. We used seconds and kilometers throughout, as recommended in the instructions.
+
+\par
+The 6-element state vector used is
 \[
 \mathbf{x} = \begin{bmatrix} \mathbf{r} \\ \mathbf{v} \end{bmatrix} \in \mathbb{R}^6,
 \]
@@ -338,24 +343,25 @@ $\mathbf{v} = [\dot{x},\, \dot{y},\, \dot{z}]^\top$~(km/s) is the ECI velocity.
 
 \subsection{Equations of Motion}
 
-The orbital ODE is
+The orbital ODE we used is
 \[
 \dot{\mathbf{r}} = \mathbf{v}, \qquad
 \dot{\mathbf{v}} = \mathbf{a}_{2B} + \mathbf{a}_{J_2} + \mathbf{a}_{D}.
 \]
 
+The following are all of the considerations made to the dynamics of our system:
 \subsubsection*{Two-Body Gravity}
-
 \[
 \mathbf{a}_{2B} = -\frac{\mu}{r^3}\,\mathbf{r}, \qquad r = \|\mathbf{r}\|,
 \]
 with $\mu = 398600.4418$~km$^3$/s$^2$.
 
-\subsubsection*{$J_2$ Oblateness Perturbation}
+\subsubsection*{$J_2$, Oblateness Perturbation}
 
-The first zonal harmonic of Earth's gravitational potential produces a secular drift in the
-right ascension of the ascending node (RAAN).
-In ECI coordinates the perturbation acceleration is \cite{Vallado2013}
+Earth's oblateness causes the orbital plane to slowly rotate in inertial space which results in a secular drift of the right ascension of the ascending node (RAAN). Physically, the asymmetric mass distribution generates a small torque on the satellite’s orbital angular momentum vector, changing its direction over time while preserving its magnitude. This effect is significant at low orbits and must be accounted for when modeling long-term orbital evolution.
+
+In Earth-centered inertial (ECI) coordinates, the acceleration due to the $J_2$ perturbation is given by \cite{Vallado2013}
+
 \[
 \mathbf{a}_{J_2} = \frac{3\,J_2\,\mu\,R_E^2}{2\,r^5}
 \begin{bmatrix}
@@ -364,8 +370,8 @@ y \!\left(\dfrac{5z^2}{r^2} - 1\right) \\[8pt]
 z \!\left(\dfrac{5z^2}{r^2} - 3\right)
 \end{bmatrix},
 \]
-with $J_2 = 1.08262668 \times 10^{-3}$ and $R_E = 6378.1363$~km,
-both consistent with the EGM96 gravity model \cite{EGM96}.
+
+where $\mu$ is Earth’s gravitational parameter, $R_E$ is Earth’s equatorial radius, and $(x,y,z)$ is the spacecraft position in the inertial frame. The parameter $J_2 = 1.08262668 \times 10^{-3}$ quantifies the magnitude of Earth's oblateness, and $R_E = 6378.1363$~km is the reference equatorial radius, both consistent with the EGM96 gravity model \cite{EGM96}. 
 
 \subsubsection*{Atmospheric Drag}
 
@@ -382,10 +388,10 @@ The drag acceleration is
 where $\mathbf{v}_{\mathrm{rel}} = \mathbf{v} - \boldsymbol{\omega}_E \times \mathbf{r}$
 accounts for Earth's rotation ($\omega_E = 7.2921159 \times 10^{-5}$~rad/s), and
 $B_c = C_d A / m$ is the ballistic coefficient.
-Representative values $C_d = 2.2$, $A = 0.03$~m$^2$, and $m = 12$~kg give
+Representative values $C_d = 2.2$, $A = 0.03$~m$^2$, and $m = 12$~kg give us a ballistic coefficient
 $B_c = 5.50 \times 10^{-3}$~m$^2$/kg.
-These are approximate values; the cross-sectional area presented to the flow varies with
-spacecraft attitude, which is not modeled in the current simulation.
+The cross-sectional area presented to the flow varies with
+spacecraft attitude, which is not modeled in the current simulation as we do not take into account attitude determination.
 
 \subsection{Sun-Synchronous Orbit Design}
 
@@ -439,7 +445,7 @@ Two cases are run:
     \item \textbf{J2-only (no drag).}
     The RAAN precession rate extracted by a least-squares linear fit over 10 orbits is
     $\dot\Omega = 0.991\,^\circ$/day, compared to the target $0.985647\,^\circ$/day
-    (error of $0.54\%$).
+    (this is an error of $0.54\%$).
     The small discrepancy arises because the secular formula is a first-order orbital average,
     while the simulation propagates osculating elements that include short-period
     $J_2$ oscillations.
@@ -508,7 +514,7 @@ A 7-state ODE couples Euler's equations with quaternion kinematics
 $\dot{\mathbf{q}} = \tfrac{1}{2}\,G(\mathbf{q})\,\boldsymbol\omega$,
 integrated from $\mathbf{q}_0 = [1,0,0,0]^\top$ using the Vern9 solver
 ($\text{reltol}=10^{-10}$, $\text{abstol}=10^{-12}$) over 600~s.
-The principal moments from Section~\ref{sec:model}.3 are used throughout.
+The principal moments from Section~\ref{sec:model}.3 are used here.
 
 \subsection{Stability Analysis}
 
@@ -517,22 +523,20 @@ the off-axis perturbations oscillate at
 \[
 \omega_n = |\Omega|\sqrt{\frac{(I_k - I_i)(I_k - I_j)}{I_i\,I_j}}.
 \]
-This frequency is real---and the axis is \emph{stable}---only when $I_k$
+This frequency is real and the axis is stable only when $I_k$
 is the largest or smallest principal moment.
-Intermediate-axis spin yields an imaginary $\omega_n$: this is the
-\emph{tennis-racket theorem}, which predicts that any perturbation,
-however small, leads to unbounded tumbling.
+Spin along our intermediate axis yields an imaginary $\omega_n$ which leads to  the tennis-racket effect described by tennis-racket theorem, which states that any perturbation will lead to unbounded tumbling.
 
-Three simulations are run with $\|\boldsymbol\omega_0\| = 10$~RPM
+Three simulations were run with $\|\boldsymbol\omega_0\| = 10$~RPM
 using the same angular momentum magnitude $H_0 = I_3\,\omega_\mathrm{mag}$:
 
 \begin{itemize}
     \item \textbf{Major axis} ($I_3 = 0.249$~kg\,m$^2$, $\omega_3 = 1.047$~rad/s):
-          2~RPM off-axis perturbation — stable.
+          2~RPM off-axis perturbation: stable.
     \item \textbf{Intermediate axis} ($I_2 = 0.195$~kg\,m$^2$, $\omega_2 = 1.342$~rad/s):
-          0.05~RPM perturbation — unstable (separatrix).
+          0.05~RPM perturbation: unstable, separatrix.
     \item \textbf{Minor axis} ($I_1 = 0.140$~kg\,m$^2$, $\omega_1 = 1.868$~rad/s):
-          2~RPM off-axis perturbation — stable.
+          2~RPM off-axis perturbation: stable.
 \end{itemize}
 
 \subsection{Nutation Period Validation}
@@ -551,13 +555,13 @@ Minor ($I_1$) & 1.868 & \phantom{0}9.489 & \phantom{0}9.469 & 0.21\% \\
 \end{tabular}
 \end{center}
 
-The sub-1\% errors are consistent with expected nonlinear corrections at
-the 20\% perturbation amplitude used; the linearized formula is exact only for
+The sub-1\% errors are consistent with the expected nonlinear corrections at
+the 20\% perturbation amplitude used. The linearized formula is exact only for
 infinitesimal perturbations.
-Kinetic energy and inertial angular momentum are conserved to
-$|\Delta T/T_0| < 6\times10^{-12}\%$ and $|\Delta H/H_0| < 5\times10^{-9}\%$
-respectively, confirming numerical accuracy.
-Figure~\ref{fig:euler_conservation} shows these quantities vs.\ time for the
+The kinetic energy and inertial angular momentum are conserved to
+$|\Delta T/T_0| < 9\times10^{-12}\%$ and $|\Delta H/H_0| < 5\times10^{-12}\%$,
+confirming the numerical precision.
+Figure~\ref{fig:euler_conservation} shows these quantities vs. time for the
 intermediate-axis simulation.
 
 \begin{figure}[H]
@@ -565,9 +569,9 @@ intermediate-axis simulation.
     \includegraphics[width=0.85\textwidth]{figs/euler_conservation.png}
     \caption{Conservation verification for intermediate-axis spin (torque-free, Vern9,
              $\text{reltol}=10^{-10}$).
-             Top: kinetic energy $T(t)$ — constant to $<6\times10^{-12}\%$.
+             Top: kinetic energy $T(t)$ — constant to $<9\times10^{-12}\%$.
              Bottom: inertial angular momentum components $H_x, H_y, H_z$ — each
-             constant to $<5\times10^{-9}\%$, confirming no spurious numerical torque.}
+             constant to $<5\times10^{-12}\%$, confirming no spurious numerical torque.}
     \label{fig:euler_conservation}
 \end{figure}
 
@@ -575,15 +579,14 @@ intermediate-axis simulation.
 
 Figure~\ref{fig:momentum_sphere} shows the angular momentum sphere in the body
 principal frame.
-Major- and minor-axis trajectories form small closed elliptic loops around the
+As shown in class, the major and minor-axis trajectories form small closed elliptic loops around the
 stable equilibria ($\pm\hat{e}_3$ and $\pm\hat{e}_1$), while the
 intermediate-axis trajectory traces the separatrix connecting the unstable
 equilibria ($\pm\hat{e}_2$).
 
 Figure~\ref{fig:euler_omega} shows the angular velocity time histories.
-For stable axes the off-axis components oscillate with bounded amplitude,
-confirming stable nutation; the intermediate axis shows large excursions in
-all three components, characteristic of separatrix behavior.
+For stable axes the off-axis components oscillate with bounded amplitude while the intermediate axis shows large excursions in
+all three components.
 
 Figure~\ref{fig:euler_perturbations} demonstrates that intermediate-axis
 instability is independent of perturbation magnitude: perturbations of
