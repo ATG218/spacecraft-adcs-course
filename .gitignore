@@ -11,15 +11,14 @@ __pycache__/
 *.jl.*.cov
 Manifest.toml
 
-# LaTeX build artifacts
-*.aux
-*.log
-*.out
-*.synctex.gz
-*.toc
-*.fls
-*.fdb_latexmk
-
 # Course lecture notes
 Lectures/
-CLAUDE.MD
+
+# Claude config
+CLAUDE.md
+
+# Draft / classmate notebooks (not part of submission)
+sources/starling_adcs_revised.ipynb
+
+sources/hw1.tex
+sources/hw2.tex
