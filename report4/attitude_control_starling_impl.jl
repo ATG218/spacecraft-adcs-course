@@ -1,5 +1,4 @@
 # Starling attitude control + MEKF. Load after include("environmental_perturbations.jl").
-# Experiments: attitude_control_starling.ipynb
 using LinearAlgebra
 using StaticArrays
 using Random
@@ -25,34 +24,19 @@ include(joinpath(_STARLING_IMPL_DIR, "mekf.jl"))
 const MU_KM = 398600.4418
 const RE_KM = 6378.1363
 
-I_body = @SMatrix [
-    0.249  0.0    0.0
-    0.0    0.187  0.02
-    0.0    0.02   0.148
-]
-const J_dyn = Matrix{Float64}(I_body)
-const Ji_dyn = inv(J_dyn)
-
-e_panel = @SVector [0.0, 1.0, 0.0]
-alt_km = 480.0
-a_km = RE_KM + alt_km
-
 function compute_sso_inclination(altitude_km)
-    mu = MU_KM
-    re = RE_KM
     j2 = 1.08262668e-3
-    omega_dot = 0.985647 * (pi / 180) / 86400
-    a = re + altitude_km
-    n = sqrt(mu / a^3)
-    return acos(clamp(omega_dot / (-1.5 * j2 * n * (re / a)^2), -1.0, 1.0))
+    omega_dot = 0.985647 * (π / 180) / 86400
+    a = RE_KM + altitude_km
+    n = sqrt(MU_KM / a^3)
+    return acos(clamp(omega_dot / (-1.5 * j2 * n * (RE_KM / a)^2), -1.0, 1.0))
 end
 
 function coe_to_eci(a_km, e, inc, raan, argp, nu)
-    mu = MU_KM
     p = a_km * (1 - e^2)
     rn = p / (1 + e * cos(nu))
     r_pqw = rn .* @SVector [cos(nu), sin(nu), 0.0]
-    v_pqw = sqrt(mu / p) .* @SVector [-sin(nu), e + cos(nu), 0.0]
+    v_pqw = sqrt(MU_KM / p) .* @SVector [-sin(nu), e + cos(nu), 0.0]
     cr, sr = cos(raan), sin(raan)
     ci, si = cos(inc), sin(inc)
     cp, sp = cos(argp), sin(argp)
@@ -64,29 +48,63 @@ function coe_to_eci(a_km, e, inc, raan, argp, nu)
     return R * r_pqw, R * v_pqw
 end
 
-inc = compute_sso_inclination(alt_km)
-mean_motion_rad_s = sqrt(MU_KM / a_km^3)
+# --- Spacecraft / mission configuration ---
 
-env = EarthEnvironment()
-aero = SpacecraftAeroProperties(
-    Cd=2.2,
-    area_m2=0.03,
-    mass_kg=12.0,
-    area_normal_body=e_panel,
-    center_of_pressure_body_m=SVector(0.02, 0.0, 0.0),
-)
-srp = SpacecraftSRPProperties(
-    Cr=1.3,
-    area_m2=0.03,
-    area_normal_body=e_panel,
-    center_of_pressure_body_m=SVector(0.02, 0.0, 0.0),
-    sun_distance_au=1.0,
-    eclipse=false,
-)
+const _DEFAULT_I_BODY = @SMatrix [
+    0.249  0.0    0.0
+    0.0    0.187  0.02
+    0.0    0.02   0.148
+]
+const _DEFAULT_E_PANEL = @SVector [0.0, 1.0, 0.0]
+const _DEFAULT_SUN_VEC = @SVector [1.0e8, 0.0, 0.0]
 
-τ_rw_max = 6e-3
-rho_rw_max = 50e-3
-sun_vec_eci = @SVector [1.0e8, 0.0, 0.0]
+struct StarlingConfig
+    I_body::SMatrix{3,3,Float64}
+    Ji_body::SMatrix{3,3,Float64}
+    e_panel::SVector{3,Float64}
+    alt_km::Float64
+    a_km::Float64
+    inc_rad::Float64
+    mean_motion_rad_s::Float64
+    τ_rw_max::Float64
+    rho_rw_max::Float64
+    sun_vec_eci::SVector{3,Float64}
+    env::EarthEnvironment
+    aero::SpacecraftAeroProperties
+    srp::SpacecraftSRPProperties
+end
+
+function StarlingConfig(;
+    I_body::SMatrix{3,3,Float64} = _DEFAULT_I_BODY,
+    e_panel::SVector{3,Float64} = _DEFAULT_E_PANEL,
+    alt_km::Float64 = 480.0,
+    τ_rw_max::Float64 = 6e-3,
+    rho_rw_max::Float64 = 50e-3,
+    sun_vec_eci::SVector{3,Float64} = _DEFAULT_SUN_VEC,
+    env::EarthEnvironment = EarthEnvironment(),
+    aero::SpacecraftAeroProperties = SpacecraftAeroProperties(
+        Cd=2.2, area_m2=0.03, mass_kg=12.0,
+        area_normal_body=_DEFAULT_E_PANEL,
+        center_of_pressure_body_m=SVector(0.02, 0.0, 0.0),
+    ),
+    srp::SpacecraftSRPProperties = SpacecraftSRPProperties(
+        Cr=1.3, area_m2=0.03,
+        area_normal_body=_DEFAULT_E_PANEL,
+        center_of_pressure_body_m=SVector(0.02, 0.0, 0.0),
+        sun_distance_au=1.0, eclipse=false,
+    ),
+)
+    Ji_body = SMatrix{3,3,Float64}(inv(Matrix(I_body)))
+    a_km_ = RE_KM + alt_km
+    inc_rad = compute_sso_inclination(alt_km)
+    mean_motion = sqrt(MU_KM / a_km_^3)
+    return StarlingConfig(
+        I_body, Ji_body, e_panel, alt_km, a_km_, inc_rad, mean_motion,
+        τ_rw_max, rho_rw_max, sun_vec_eci, env, aero, srp,
+    )
+end
+
+# --- Quaternion algebra ---
 
 Hq = [zeros(1, 3); I(3)]
 
@@ -160,18 +178,18 @@ function sat_vec(u, umax)
     return clamp.(u, -umax, umax)
 end
 
-function env_torque_body(q_bi::SVector{4,Float64}, r_km::SVector{3,Float64}, v_kmps::SVector{3,Float64})
+# --- Dynamics (all take cfg to avoid globals) ---
+
+function env_torque_body(q_bi::SVector{4,Float64}, r_km::SVector{3,Float64},
+                         v_kmps::SVector{3,Float64}, cfg::StarlingConfig)
     r_m = 1000.0 .* r_km
     v_mps = 1000.0 .* v_kmps
     w = environmental_wrench(
-        I_body,
-        q_bi,
-        r_m,
-        v_mps;
-        sun_eci_m=sun_vec_eci,
-        env=env,
-        aero=aero,
-        srp=srp,
+        cfg.I_body, q_bi, r_m, v_mps;
+        sun_eci_m=cfg.sun_vec_eci,
+        env=cfg.env,
+        aero=cfg.aero,
+        srp=cfg.srp,
         include_gravity_gradient=true,
         include_drag=true,
         include_srp=false,
@@ -179,23 +197,21 @@ function env_torque_body(q_bi::SVector{4,Float64}, r_km::SVector{3,Float64}, v_k
     return SVector{3,Float64}(w.torque_body_Nm)
 end
 
-function dynamics_rhs(q, ω, rho, τ_dist, u_cmd)
+function dynamics_rhs(q, ω, rho, τ_dist, u_cmd, cfg::StarlingConfig)
     qn = quat_normalize(q)
     ωv = SVector{3,Float64}(ω)
     rhov = SVector{3,Float64}(rho)
     u = SVector{3,Float64}(u_cmd)
     τd = SVector{3,Float64}(τ_dist)
     qdot = 0.5 .* (Lmat(qn) * SVector{4,Float64}(0.0, ωv[1], ωv[2], ωv[3]))
-    # Lecture convention: H = J*ω + rho is total angular momentum, while rho
-    # is the internal reaction-wheel momentum; rho_dot = -u for bus torque u.
-    ωdot = Ji_dyn * (τd + u - cross(ωv, J_dyn * ωv + rhov))
+    ωdot = cfg.Ji_body * (τd + u - cross(ωv, cfg.I_body * ωv + rhov))
     rhodot = -Vector(u)
     return Vector(qdot), Vector(ωdot), Vector(rhodot)
 end
 
-function rk4_step(q, ω, rho, τ_dist, u_cmd, dt)
+function rk4_step(q, ω, rho, τ_dist, u_cmd, dt, cfg::StarlingConfig)
     function f(qv, ωv, rhov)
-        return dynamics_rhs(qv, ωv, rhov, τ_dist, u_cmd)
+        return dynamics_rhs(qv, ωv, rhov, τ_dist, u_cmd, cfg)
     end
     k1q, k1w, k1rho = f(q, ω, rho)
     k2q, k2w, k2rho = f(q .+ 0.5 * dt .* k1q, ω .+ 0.5 * dt .* k1w, rho .+ 0.5 * dt .* k1rho)
@@ -205,7 +221,7 @@ function rk4_step(q, ω, rho, τ_dist, u_cmd, dt)
     ωn = ω .+ (dt / 6) .* (k1w .+ 2 .* k2w .+ 2 .* k3w .+ k4w)
     rhon = rho .+ (dt / 6) .* (k1rho .+ 2 .* k2rho .+ 2 .* k3rho .+ k4rho)
     qn = Vector(quat_normalize(qn))
-    rhon = sat_vec(rhon, rho_rw_max)
+    rhon = sat_vec(rhon, cfg.rho_rw_max)
     return qn, Vector(ωn), Vector(rhon)
 end
 
@@ -227,7 +243,6 @@ function meas_stack(q, rN_mat::Matrix{Float64})
     Qk = Qbody_from_quat(q)
     for k in 1:m
         r = rN_mat[:, k]
-        # Body measurement of inertial unit vector: b = Q(q)' * r (see mekf-simple.ipynb)
         y[(3*(k-1)+1):(3*k)] .= Qk' * r
     end
     return y
@@ -273,13 +288,13 @@ function mekf_update(qpred, Ppred, y_meas, rN_mat, W)
     return qn, Pn
 end
 
-function inertial_refs(r_km::SVector{3,Float64})
+function inertial_refs(r_km::SVector{3,Float64}, cfg::StarlingConfig)
     ri = normalize(-1000.0 .* r_km)
-    si = normalize(sun_vec_eci)
+    si = normalize(cfg.sun_vec_eci)
     return Matrix(hcat(si, ri))
 end
 
-function simulate_closed_loop(; Tfinal, dt, q0, omega0, rho0, qd,
+function simulate_closed_loop(cfg::StarlingConfig; Tfinal, dt, q0, omega0, rho0, qd,
         g::PDGains,
         sigma_gyro,
         sigma_vec,
@@ -299,11 +314,9 @@ function simulate_closed_loop(; Tfinal, dt, q0, omega0, rho0, qd,
     ν = 0.0
     ω_lpf = Vector{Float64}(omega0)
 
-    # Initial estimate: small multiplicative perturbation of truth (MEKF will correct)
     dq0 = expq(0.08 .* randn(rng, 3))
     qhat = Vector(quat_normalize(Lmat(q) * dq0))
     P = Matrix(0.25 .* I(3))
-    # Course 7-state MEKF (mekf.jl, module MEKF) — quaternion + gyro bias
     qhat_s = SVector{4,Float64}(qhat[1], qhat[2], qhat[3], qhat[4])
     x_prof = SVector{7,Float64}(qhat_s[1], qhat_s[2], qhat_s[3], qhat_s[4], 0.0, 0.0, 0.0)
     P_prof = Matrix{Float64}(0.5 * I(6))
@@ -313,10 +326,10 @@ function simulate_closed_loop(; Tfinal, dt, q0, omega0, rho0, qd,
     R3 = Matrix{Float64}((sigma_vec^2) * I(3))
     R_vec_list = Matrix{Float64}[R3, R3]
 
-    r_km, v_kmps = coe_to_eci(a_km, 0.0, inc, 0.0, 0.0, ν)
+    r_km, v_kmps = coe_to_eci(cfg.a_km, 0.0, cfg.inc_rad, 0.0, 0.0, ν)
     r_km = SVector{3,Float64}(r_km)
     v_kmps = SVector{3,Float64}(v_kmps)
-    rN_init = inertial_refs(r_km)
+    rN_init = inertial_refs(r_km, cfg)
     mref = size(rN_init, 2)
     Wmekf = (sigma_vec^2) * I(3 * mref)
 
@@ -343,10 +356,7 @@ function simulate_closed_loop(; Tfinal, dt, q0, omega0, rho0, qd,
         ang_hist[k] = principal_angle_deg(qe_t)
         ang_est_hist[k] = principal_angle_deg(quat_err(q, qhat))
 
-        τ_dist = env_torque_body(quat_normalize(SVector{4,Float64}(q)), r_km, v_kmps)
-        # Lecture gyro model: measured rate = true rate + bias + white noise.
-        # The course MEKF estimates beta; the simple MEKF path is retained only
-        # for comparison/debugging and does not remove bias.
+        τ_dist = env_torque_body(quat_normalize(SVector{4,Float64}(q)), r_km, v_kmps, cfg)
         ω_meas = ω .+ β_true .+ sigma_gyro .* randn(rng, 3)
         if control_gyro_lpf_tau > 0.0
             α_lpf = 1.0 - exp(-dt / control_gyro_lpf_tau)
@@ -365,17 +375,17 @@ function simulate_closed_loop(; Tfinal, dt, q0, omega0, rho0, qd,
         end
 
         τ, _, _ = torque_pd(q_ctrl, ω_ctrl, qd, g)
-        τ_sat = sat_vec(τ, τ_rw_max)
+        τ_sat = sat_vec(τ, cfg.τ_rw_max)
         tau_hist[:, k] .= τ_sat
 
         if k < n
-            q, ω, rho = rk4_step(q, ω, rho, τ_dist, τ_sat, dt)
+            q, ω, rho = rk4_step(q, ω, rho, τ_dist, τ_sat, dt, cfg)
             β_true .= β_true .+ sigma_bias_walk * sqrt(dt) .* randn(rng, 3)
-            ν = ν + mean_motion_rad_s * dt
-            r_km, v_kmps = coe_to_eci(a_km, 0.0, inc, 0.0, 0.0, ν)
+            ν = ν + cfg.mean_motion_rad_s * dt
+            r_km, v_kmps = coe_to_eci(cfg.a_km, 0.0, cfg.inc_rad, 0.0, 0.0, ν)
             r_km = SVector{3,Float64}(r_km)
             v_kmps = SVector{3,Float64}(v_kmps)
-            rN_post = inertial_refs(r_km)
+            rN_post = inertial_refs(r_km, cfg)
             y_meas = meas_stack(q, rN_post) .+ sigma_vec .* randn(rng, 3 * mref)
             if professor_mekf
                 ω_meas_sv = SVector{3,Float64}(ω_meas[1], ω_meas[2], ω_meas[3])
@@ -390,7 +400,6 @@ function simulate_closed_loop(; Tfinal, dt, q0, omega0, rho0, qd,
                     normalize(SVector{3,Float64}(y_meas[4:6])),
                 ]
                 zv, Cv, Wv = MEKF.build_vector_measurement(q_pred_sv, vec_meas_k, vec_refs_k, R_vec_list)
-                # Tiny diagonal load on W for numerical conditioning (optional in course script)
                 Wv = Wv + (1e-12 + 1e-12 * tr(Wv) / size(Wv, 1)) * I(size(Wv, 1))
                 x_prof, P_prof = MEKF.mekf_update(x_pred, P_pred, zv, Cv, Wv)
                 qhat[1], qhat[2], qhat[3], qhat[4] = x_prof[1], x_prof[2], x_prof[3], x_prof[4]
@@ -413,7 +422,3 @@ function rms_steady(ang_deg::Vector{Float64}; skip_frac=0.25)
     v = @view ang_deg[i0:end]
     return sqrt(mean(abs2.(v)))
 end
-
-# Aliases for notebook convenience after `include` (same names as report4)
-Ji = Ji_dyn
-J = J_dyn
