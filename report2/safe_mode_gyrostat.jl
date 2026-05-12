@@ -77,7 +77,7 @@ function gyrostat_attitude_ode!(dx, x, p, t)
 end
 
 function integrate_gyrostat!(I_mat, ω0, q0, H_r, e; tspan=(0.0, 1000.0), reltol=1e-9, abstol=1e-12)
-    x0 = [q0/norm(q0); ω0]
+    x0 = Vector{Float64}([q0/norm(q0); ω0])
     sol = solve(ODEProblem(gyrostat_attitude_ode!, x0, tspan, (; I=I_mat, H_r=H_r, e=e)),
                 Vern9(); reltol=reltol, abstol=abstol)
     for u in sol.u
@@ -126,6 +126,7 @@ function orbit_gyrostat_ode!(dx, x, p, t)
 end
 
 function integrate_orbit_gyrostat!(x0, I, H_r, e; tspan=(0.0, 3600.0), drag=false, reltol=1e-9, abstol=1e-12)
+    x0 = Vector{Float64}(x0)
     sol = solve(ODEProblem(orbit_gyrostat_ode!, x0, tspan, (; I=I, H_r=H_r, e=e, drag=drag)),
                 Vern9(); reltol=reltol, abstol=abstol)
     for u in sol.u

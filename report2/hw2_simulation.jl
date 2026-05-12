@@ -56,9 +56,9 @@ end
 function main()
 
     I_body = @SMatrix [
-        0.249  0.0    0.0
-        0.0    0.187  0.02
-        0.0    0.02   0.148
+        0.282  0.0    0.0
+        0.0    0.188  0.028
+        0.0    0.028  0.174
     ]
     e_panel   = @SVector [0.0, 1.0, 0.0]
     omega_des = rpm2rad(10.0)

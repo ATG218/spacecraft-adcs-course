@@ -51,9 +51,9 @@ end
 # --- Spacecraft / mission configuration ---
 
 const _DEFAULT_I_BODY = @SMatrix [
-    0.249  0.0    0.0
-    0.0    0.187  0.02
-    0.0    0.02   0.148
+    0.282  0.0    0.0
+    0.0    0.188  0.028
+    0.0    0.028  0.174
 ]
 const _DEFAULT_E_PANEL = @SVector [0.0, 1.0, 0.0]
 const _DEFAULT_SUN_VEC = @SVector [1.0e8, 0.0, 0.0]
