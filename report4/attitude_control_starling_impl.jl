@@ -167,11 +167,15 @@ function principal_angle_deg(qe::AbstractVector)
     return 2 * rad2deg(acos(clamp(qe[1], -1.0, 1.0)))
 end
 
-function random_quat_max_angle(theta_max_rad)
-    ax = randn(3)
+function random_quat_max_angle(rng::AbstractRNG, theta_max_rad)
+    ax = randn(rng, 3)
     ax = ax / norm(ax)
-    θ = rand() * theta_max_rad
+    θ = rand(rng) * theta_max_rad
     return quat_normalize(@SVector [cos(θ / 2), ax[1] * sin(θ / 2), ax[2] * sin(θ / 2), ax[3] * sin(θ / 2)])
+end
+
+function random_quat_max_angle(theta_max_rad)
+    return random_quat_max_angle(Random.default_rng(), theta_max_rad)
 end
 
 function sat_vec(u, umax)
