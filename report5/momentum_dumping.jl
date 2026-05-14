@@ -134,6 +134,22 @@ function dynamics_rhs_md(q, omega, rho, external_torque, wheel_torque, cfg::Star
     return dynamics_rhs(q, omega, rho, external_torque, wheel_torque, cfg)
 end
 
+function momentum_limited_wheel_torque(tau_cmd::AbstractVector{<:Real},
+                                       rho::AbstractVector{<:Real},
+                                       dt::Real,
+                                       cfg::StarlingConfig)
+    dt <= 0 && throw(ArgumentError("dt must be positive for wheel momentum limiting"))
+    tau = Vector{Float64}(sat_vec(tau_cmd, cfg.τ_rw_max))
+    rho_max = cfg.rho_rw_max
+    for i in eachindex(tau)
+        rho_i = clamp(float(rho[i]), -rho_max, rho_max)
+        tau_min = (rho_i - rho_max) / dt
+        tau_max = (rho_i + rho_max) / dt
+        tau[i] = clamp(tau[i], tau_min, tau_max)
+    end
+    return tau
+end
+
 function rk4_step_md(q, omega, rho, external_torque, wheel_torque, dt, cfg::StarlingConfig)
     function f(qv, omegav, rhov)
         return dynamics_rhs_md(qv, omegav, rhov, external_torque, wheel_torque, cfg)
@@ -167,6 +183,7 @@ function simulate_momentum_dumping(cfg::StarlingConfig; Tfinal, dt, q0, omega0, 
         enable_dumping::Bool=false,
         feedforward_external_torque::Bool=false,
         wheel_torque_mode::Symbol=:controlled,
+        enforce_wheel_momentum_limit::Bool=true,
         dump_gain::Float64=2.0e-4,
         dipole_max::Float64=0.1,
         dump_deadband::Float64=0.0,
@@ -186,12 +203,16 @@ function simulate_momentum_dumping(cfg::StarlingConfig; Tfinal, dt, q0, omega0, 
     P = Matrix(0.25 .* I(3))
     qhat_s = SVector{4,Float64}(qhat[1], qhat[2], qhat[3], qhat[4])
     x_prof = SVector{7,Float64}(qhat_s[1], qhat_s[2], qhat_s[3], qhat_s[4], 0.0, 0.0, 0.0)
-    P_prof = Matrix{Float64}(0.5 * I(6))
+    P_prof = zeros(6, 6)
+    P_prof[1:3, 1:3] .= 0.25 * I(3)
+    initial_bias_var = max((10.0 * sigma_gyro)^2, (sigma_bias_walk * sqrt(dt))^2)
+    P_prof[4:6, 4:6] .= initial_bias_var * I(3)
     Qproc_prof = zeros(6, 6)
     Qproc_prof[1:3, 1:3] .= (sigma_gyro^2) * (dt^2) * I(3)
     Qproc_prof[4:6, 4:6] .= (sigma_bias_walk^2) * dt * I(3)
     R3 = Matrix{Float64}((sigma_vec^2) * I(3))
     R_vec_list = Matrix{Float64}[R3, R3]
+    omega_meas = omega .+ beta_true .+ sigma_gyro .* randn(rng, 3)
 
     r_km, v_kmps = coe_to_eci(cfg.a_km, 0.0, cfg.inc_rad, 0.0, 0.0, nu)
     r_km = SVector{3,Float64}(r_km)
@@ -258,7 +279,6 @@ function simulate_momentum_dumping(cfg::StarlingConfig; Tfinal, dt, q0, omega0, 
         dipole_hist[:, k] .= dump.dipole_body_Am2
         B_body_hist[:, k] .= B_body
 
-        omega_meas = omega .+ beta_true .+ sigma_gyro .* randn(rng, 3)
         if control_gyro_lpf_tau > 0.0
             alpha_lpf = 1.0 - exp(-dt / control_gyro_lpf_tau)
             omega_lpf .= (1.0 - alpha_lpf) .* omega_lpf .+ alpha_lpf .* omega_meas
@@ -278,7 +298,13 @@ function simulate_momentum_dumping(cfg::StarlingConfig; Tfinal, dt, q0, omega0, 
 
         tau_pd, _, _ = torque_pd(q_ctrl, omega_ctrl, qd, g)
         tau_cmd = feedforward_external_torque ? tau_pd .- tau_external : tau_pd
-        tau_sat = wheel_torque_mode === :none ? zeros(3) : sat_vec(tau_cmd, cfg.τ_rw_max)
+        tau_sat = if wheel_torque_mode === :none
+            zeros(3)
+        elseif enforce_wheel_momentum_limit
+            momentum_limited_wheel_torque(tau_cmd, rho, dt, cfg)
+        else
+            sat_vec(tau_cmd, cfg.τ_rw_max)
+        end
         tau_hist[:, k] .= tau_sat
 
         if k < n
@@ -290,8 +316,14 @@ function simulate_momentum_dumping(cfg::StarlingConfig; Tfinal, dt, q0, omega0, 
             v_kmps = SVector{3,Float64}(v_kmps)
             rN_post = inertial_refs(r_km, cfg)
             y_meas = meas_stack(q, rN_post) .+ sigma_vec .* randn(rng, 3 * mref)
+            omega_meas_next = omega .+ beta_true .+ sigma_gyro .* randn(rng, 3)
+            omega_meas_interval = 0.5 .* (omega_meas .+ omega_meas_next)
             if professor_mekf
-                omega_meas_sv = SVector{3,Float64}(omega_meas[1], omega_meas[2], omega_meas[3])
+                omega_meas_sv = SVector{3,Float64}(
+                    omega_meas_interval[1],
+                    omega_meas_interval[2],
+                    omega_meas_interval[3],
+                )
                 x_pred, P_pred = MEKF.mekf_predict(x_prof, P_prof, omega_meas_sv, dt, Qproc_prof)
                 q_pred_sv = SVector{4,Float64}(x_pred[1], x_pred[2], x_pred[3], x_pred[4])
                 vec_refs_k = SVector{3,Float64}[
@@ -308,9 +340,10 @@ function simulate_momentum_dumping(cfg::StarlingConfig; Tfinal, dt, q0, omega0, 
                 qhat[1], qhat[2], qhat[3], qhat[4] = x_prof[1], x_prof[2], x_prof[3], x_prof[4]
                 qhat ./= norm(qhat)
             else
-                qpred, Ppred, _ = mekf_predict(qhat, P, omega_meas, dt, V_mekf)
+                qpred, Ppred, _ = mekf_predict(qhat, P, omega_meas_interval, dt, V_mekf)
                 qhat, P = mekf_update(qpred, Ppred, y_meas, rN_post, Wmekf)
             end
+            omega_meas = omega_meas_next
         end
     end
 
@@ -335,6 +368,7 @@ function simulate_momentum_dumping(cfg::StarlingConfig; Tfinal, dt, q0, omega0, 
         enable_dumping,
         feedforward_external_torque,
         wheel_torque_mode,
+        enforce_wheel_momentum_limit,
         dump_gain,
         dipole_max,
     )

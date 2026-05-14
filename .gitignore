@@ -24,3 +24,7 @@ sources/hw1.tex
 sources/hw2.tex
 import/
 .claude/
+
+# Local notes
+report5/momentum_dumping_notes.md
+report5/report5_momentum_dumping.ipynb
